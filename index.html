@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>URLCraft — Parse, Build &amp; Inspect URLs in Your Browser</title>
+  <meta name="description" content="Instantly parse any URL into its parts, build URLs from components, generate UTM links, encode/decode query strings. 100% in-browser, free forever." />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3e;
+      --accent: #10b981;
+      --accent2: #34d399;
+      --text: #e2e8f0;
+      --muted: #6b7280;
+      --green: #22c55e;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --yellow: #f59e0b;
+      --purple: #a855f7;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+
+    header { padding: 1.2rem 2rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .logo { font-size: 1.25rem; font-weight: 700; }
+    .logo span { color: var(--accent2); }
+    .badge { background: var(--accent); color: #000; font-size: 0.65rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .privacy-pill { background: #052e16; color: #4ade80; font-size: 0.7rem; font-weight: 600; padding: 0.25rem 0.75rem; border-radius: 999px; border: 1px solid #166534; }
+    .tagline { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+
+    .main-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 2rem; gap: 0; }
+    .main-tab { padding: 0.85rem 1.5rem; font-size: 0.85rem; font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; transition: all 0.15s; }
+    .main-tab:hover { color: var(--text); }
+    .main-tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+
+    .tab-content { display: none; padding: 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    /* Input panels */
+    .url-input-wrap { position: relative; margin-bottom: 1.5rem; }
+    .url-input { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1.25rem; font-size: 1rem; font-family: 'Courier New', monospace; outline: none; transition: border-color 0.15s; }
+    .url-input:focus { border-color: var(--accent); }
+    .url-input.error { border-color: var(--red); }
+    .url-input.valid { border-color: var(--green); }
+
+    .input-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.4rem; }
+
+    /* Parts grid */
+    .parts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .part-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .part-card-header { padding: 0.6rem 1rem; background: #0f1117; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.5rem; }
+    .part-name { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+    .part-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .part-value { padding: 0.75rem 1rem; font-family: 'Courier New', monospace; font-size: 0.85rem; word-break: break-all; color: var(--text); min-height: 2.5rem; line-height: 1.5; }
+    .part-value.empty { color: var(--muted); font-style: italic; }
+    .copy-btn { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px; transition: all 0.15s; }
+    .copy-btn:hover { color: var(--accent2); }
+
+    /* Query params table */
+    .params-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }
+    .params-table th { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+    .params-table td { padding: 0.45rem 0.75rem; border-bottom: 1px solid #1e2130; font-family: 'Courier New', monospace; vertical-align: top; }
+    .params-table tr:last-child td { border-bottom: none; }
+    .param-key { color: var(--blue); }
+    .param-val { color: var(--green); word-break: break-all; }
+    .param-decoded { color: var(--muted); font-size: 0.78rem; }
+
+    /* Builder form */
+    .builder-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    @media (max-width: 700px) { .builder-grid { grid-template-columns: 1fr; } }
+    .field-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .field-input { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem; font-family: 'Courier New', monospace; font-size: 0.85rem; outline: none; width: 100%; }
+    .field-input:focus { border-color: var(--accent); }
+
+    .params-builder { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
+    .params-builder-header { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .params-builder-header h3 { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+    .param-row { display: flex; gap: 0.5rem; padding: 0.5rem 1rem; border-bottom: 1px solid #1e2130; align-items: center; }
+    .param-row:last-child { border-bottom: none; }
+    .param-row input { flex: 1; background: #0b0e15; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.35rem 0.6rem; font-family: 'Courier New', monospace; font-size: 0.82rem; outline: none; }
+    .param-row input:focus { border-color: var(--accent); }
+    .param-row .del-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 0.2rem 0.4rem; }
+    .param-row .del-btn:hover { color: var(--red); }
+
+    .output-url { background: var(--surface); border: 1px solid var(--accent); border-radius: 10px; padding: 1rem 1.25rem; font-family: 'Courier New', monospace; font-size: 0.9rem; word-break: break-all; color: var(--accent2); line-height: 1.6; min-height: 3rem; margin-bottom: 1rem; }
+
+    /* UTM builder */
+    .utm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    @media (max-width: 700px) { .utm-grid { grid-template-columns: 1fr; } }
+
+    /* Encode/decode */
+    .encode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    @media (max-width: 700px) { .encode-grid { grid-template-columns: 1fr; } }
+    .encode-area { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .encode-area-header { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .encode-area-header h3 { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+    textarea.encode-text { width: 100%; background: #0b0e15; color: var(--text); border: none; padding: 1rem; font-family: 'Courier New', monospace; font-size: 0.85rem; resize: vertical; outline: none; min-height: 140px; line-height: 1.6; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+    .btn { padding: 0.45rem 1.1rem; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-primary:hover { background: var(--accent2); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--text); }
+    .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.78rem; }
+
+    /* Status */
+    .status-badge { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; font-weight: 600; padding: 0.3rem 0.75rem; border-radius: 999px; }
+    .status-valid { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+    .status-invalid { background: #2d0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+    .status-warning { background: #1c1107; color: #fbbf24; border: 1px solid #78350f; }
+
+    /* Empty */
+    .empty-state { padding: 2.5rem 2rem; text-align: center; color: var(--muted); }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+
+    /* Pro banner */
+    .pro-banner { background: linear-gradient(135deg, #051f0e 0%, #1a1d27 100%); border: 1px solid var(--accent); border-radius: 10px; padding: 1.25rem 1.5rem; margin: 0 2rem 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .pro-banner h3 { font-size: 0.95rem; font-weight: 700; color: var(--accent2); }
+    .pro-banner p { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+    .btn-pro { background: var(--accent); color: #000; padding: 0.5rem 1.25rem; border-radius: 6px; font-weight: 700; font-size: 0.82rem; text-decoration: none; margin-left: auto; white-space: nowrap; }
+    .btn-pro:hover { background: var(--accent2); }
+
+    /* Footer */
+    footer { border-top: 1px solid var(--border); padding: 1.5rem 2rem; margin-top: 1rem; }
+    .footer-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.75rem; }
+    .tool-links { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .tool-link { color: var(--muted); text-decoration: none; font-size: 0.82rem; padding: 0.3rem 0.7rem; border: 1px solid var(--border); border-radius: 6px; transition: all 0.15s; }
+    .tool-link:hover { color: var(--text); border-color: var(--accent); }
+    .tool-link.current { color: var(--accent2); border-color: var(--accent); }
+
+    .section-title { font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 0.75rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">URL<span>Craft</span></div>
+  <span class="badge">Free</span>
+  <span class="privacy-pill">🔒 100% In-Browser — No Data Sent Anywhere</span>
+  <span class="tagline">Parse · Build · UTM · Encode</span>
+</header>
+
+<div class="main-tabs">
+  <button class="main-tab active" onclick="switchMainTab('parse')">🔍 Parse URL</button>
+  <button class="main-tab" onclick="switchMainTab('build')">🔨 Build URL</button>
+  <button class="main-tab" onclick="switchMainTab('utm')">📊 UTM Builder</button>
+  <button class="main-tab" onclick="switchMainTab('encode')">🔐 Encode / Decode</button>
+</div>
+
+<!-- PARSE TAB -->
+<div id="tab-parse" class="tab-content active">
+  <div class="input-label">Paste any URL</div>
+  <input type="text" class="url-input" id="parse-input"
+    placeholder="https://example.com/path?foo=bar&baz=qux#section"
+    oninput="parseURL(this.value)" />
+
+  <div id="parse-empty" class="empty-state">
+    <div class="icon">🔗</div>
+    <p>Paste a URL above to instantly break it into parts.<br>Query params, fragments, encoding — all decoded for you.</p>
+  </div>
+
+  <div id="parse-results" style="display:none;">
+    <div id="parse-status" style="margin-bottom:1rem;"></div>
+
+    <div class="parts-grid" id="parts-grid"></div>
+
+    <div id="params-section" style="margin-top:1.5rem;display:none;">
+      <div class="section-title">Query Parameters</div>
+      <table class="params-table">
+        <thead><tr><th>Key</th><th>Value (raw)</th><th>Decoded</th></tr></thead>
+        <tbody id="params-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="btn-row" id="parse-btns" style="display:none;">
+    <button class="btn btn-ghost" onclick="loadParseExample()">Load Example</button>
+    <button class="btn btn-ghost" onclick="copyParsed()">Copy JSON</button>
+    <button class="btn btn-ghost" onclick="sendToBuilder()">→ Send to Builder</button>
+    <button class="btn btn-ghost" onclick="clearParse()">Clear</button>
+  </div>
+</div>
+
+<!-- BUILD TAB -->
+<div id="tab-build" class="tab-content">
+  <div class="builder-grid">
+    <div class="field-group">
+      <div class="input-label">Protocol</div>
+      <select class="field-input" id="b-scheme" onchange="buildURL()">
+        <option value="https">https://</option>
+        <option value="http">http://</option>
+        <option value="ftp">ftp://</option>
+        <option value="ws">ws://</option>
+        <option value="wss">wss://</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <div class="input-label">Host</div>
+      <input class="field-input" id="b-host" placeholder="example.com" oninput="buildURL()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Port (optional)</div>
+      <input class="field-input" id="b-port" placeholder="8080" oninput="buildURL()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Path</div>
+      <input class="field-input" id="b-path" placeholder="/api/v1/users" oninput="buildURL()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Fragment (hash)</div>
+      <input class="field-input" id="b-fragment" placeholder="section-id" oninput="buildURL()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Username (optional)</div>
+      <input class="field-input" id="b-user" placeholder="admin" oninput="buildURL()" />
+    </div>
+  </div>
+
+  <div class="params-builder">
+    <div class="params-builder-header">
+      <h3>Query Parameters</h3>
+      <button class="btn btn-ghost btn-sm" onclick="addParamRow()">+ Add Param</button>
+    </div>
+    <div id="param-rows">
+      <div class="param-row">
+        <input placeholder="key" oninput="buildURL()" class="param-key-input" />
+        <input placeholder="value" oninput="buildURL()" class="param-val-input" />
+        <button class="del-btn" onclick="removeParamRow(this)">×</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-label">Built URL</div>
+  <div class="output-url" id="build-output">—</div>
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="copyBuilt()">Copy URL</button>
+    <button class="btn btn-ghost" onclick="clearBuilder()">Clear</button>
+  </div>
+</div>
+
+<!-- UTM TAB -->
+<div id="tab-utm" class="tab-content">
+  <div class="utm-grid">
+    <div class="field-group">
+      <div class="input-label">Base URL *</div>
+      <input class="field-input" id="utm-base" placeholder="https://yoursite.com/landing" oninput="buildUTM()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Campaign Source * (utm_source)</div>
+      <input class="field-input" id="utm-source" placeholder="google, twitter, newsletter" oninput="buildUTM()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Campaign Medium * (utm_medium)</div>
+      <input class="field-input" id="utm-medium" placeholder="cpc, email, social" oninput="buildUTM()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Campaign Name * (utm_campaign)</div>
+      <input class="field-input" id="utm-campaign" placeholder="spring-sale-2026" oninput="buildUTM()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Campaign Term (utm_term)</div>
+      <input class="field-input" id="utm-term" placeholder="running+shoes" oninput="buildUTM()" />
+    </div>
+    <div class="field-group">
+      <div class="input-label">Campaign Content (utm_content)</div>
+      <input class="field-input" id="utm-content" placeholder="banner-a, text-link" oninput="buildUTM()" />
+    </div>
+  </div>
+
+  <div class="input-label">Generated UTM URL</div>
+  <div class="output-url" id="utm-output">Fill in the fields above to generate your UTM link.</div>
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="copyUTM()">Copy UTM URL</button>
+    <button class="btn btn-ghost" onclick="loadUTMExample()">Load Example</button>
+    <button class="btn btn-ghost" onclick="clearUTM()">Clear</button>
+  </div>
+</div>
+
+<!-- ENCODE TAB -->
+<div id="tab-encode" class="tab-content">
+  <div class="encode-grid">
+    <div class="encode-area">
+      <div class="encode-area-header">
+        <h3>Plain Text → Encoded</h3>
+        <button class="btn btn-ghost btn-sm" onclick="encodeText()">Encode</button>
+      </div>
+      <textarea class="encode-text" id="encode-input" placeholder="hello world & foo=bar" oninput="encodeText()"></textarea>
+      <div style="border-top:1px solid var(--border);padding:0.75rem 1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <div class="input-label" style="margin:0;align-self:center;">Mode:</div>
+        <button class="btn btn-ghost btn-sm active-mode" id="mode-component" onclick="setMode('component')">encodeURIComponent</button>
+        <button class="btn btn-ghost btn-sm" id="mode-full" onclick="setMode('full')">encodeURI</button>
+      </div>
+    </div>
+    <div class="encode-area">
+      <div class="encode-area-header">
+        <h3>Encoded → Decoded</h3>
+        <button class="btn btn-ghost btn-sm" onclick="decodeText()">Decode</button>
+      </div>
+      <textarea class="encode-text" id="decode-input" placeholder="hello%20world%20%26%20foo%3Dbar" oninput="decodeText()"></textarea>
+      <div id="decode-error" style="padding:0.5rem 1rem;font-size:0.8rem;color:var(--red);display:none;"></div>
+    </div>
+  </div>
+  <div style="margin-top:1.5rem;">
+    <div class="section-title">Encode Output</div>
+    <div class="output-url" id="encode-output" style="font-size:0.85rem;">—</div>
+    <div class="section-title" style="margin-top:1rem;">Decode Output</div>
+    <div class="output-url" id="decode-output" style="font-size:0.85rem;">—</div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="copyEncode()">Copy Encoded</button>
+      <button class="btn btn-ghost" onclick="copyDecode()">Copy Decoded</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pro CTA -->
+<div class="pro-banner">
+  <div>
+    <h3>🚀 URLCraft Pro — $4/month</h3>
+    <p>Save URL collections · Import/export · Bulk UTM generator · Team workspace · Share links</p>
+  </div>
+  <a href="https://urlcraft.gumroad.com/l/pro" class="btn-pro" target="_blank">Get Pro →</a>
+</div>
+
+<footer>
+  <div class="footer-label">More Developer Tools</div>
+  <div class="tool-links">
+    <a href="https://shiffasultan-collab.github.io/urlcraft/" class="tool-link current">URLCraft</a>
+    <a href="https://shiffasultan-collab.github.io/jwtcraft/" class="tool-link">JWTCraft</a>
+    <a href="https://shiffasultan-collab.github.io/jsoncraft/" class="tool-link">JSONCraft</a>
+    <a href="https://shiffasultan-collab.github.io/regexpal/" class="tool-link">RegexPal</a>
+    <a href="https://shiffasultan-collab.github.io/cronhelper/" class="tool-link">CronHelper</a>
+    <a href="https://shiffasultan-collab.github.io/envdiff/" class="tool-link">EnvDiff</a>
+    <a href="https://shiffasultan-collab.github.io/readmecraft/" class="tool-link">ReadmeCraft</a>
+    <a href="https://shiffasultan-collab.github.io/commitcraft/" class="tool-link">CommitCraft</a>
+    <a href="https://shiffasultan-collab.github.io/prcraft/" class="tool-link">PRCraft</a>
+    <a href="https://shiffasultan-collab.github.io/changelogcraft/" class="tool-link">ChangelogCraft</a>
+    <a href="https://shiffasultan-collab.github.io/gitdigest-static/" class="tool-link">GitDigest</a>
+  </div>
+</footer>
+
+<script>
+// ── PART COLOURS ─────────────────────────────────────────────────────────
+const PART_COLORS = {
+  protocol: '#f59e0b', username: '#a855f7', password: '#a855f7',
+  host: '#10b981', port: '#3b82f6', pathname: '#34d399',
+  search: '#60a5fa', hash: '#f87171'
+};
+let encodeMode = 'component';
+let parsedObj = null;
+
+// ── MAIN TABS ──────────────────────────────────────────────────────────────
+function switchMainTab(name) {
+  document.querySelectorAll('.main-tab').forEach((t, i) => {
+    t.classList.toggle('active', ['parse','build','utm','encode'][i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ── PARSE ──────────────────────────────────────────────────────────────────
+function parseURL(raw) {
+  raw = raw.trim();
+  if (!raw) {
+    document.getElementById('parse-empty').style.display = 'block';
+    document.getElementById('parse-results').style.display = 'none';
+    document.getElementById('parse-btns').style.display = 'none';
+    document.getElementById('parse-input').className = 'url-input';
+    parsedObj = null;
+    return;
+  }
+
+  // Try adding https:// if missing
+  let urlStr = raw;
+  if (!/^[a-z][a-z0-9+\-.]*:\/\//i.test(urlStr)) urlStr = 'https://' + urlStr;
+
+  let u;
+  try {
+    u = new URL(urlStr);
+    document.getElementById('parse-input').className = 'url-input valid';
+  } catch (e) {
+    document.getElementById('parse-input').className = 'url-input error';
+    document.getElementById('parse-status').innerHTML = `<span class="status-badge status-invalid">⛔ Invalid URL — ${e.message}</span>`;
+    document.getElementById('parse-empty').style.display = 'none';
+    document.getElementById('parse-results').style.display = 'block';
+    document.getElementById('params-section').style.display = 'none';
+    document.getElementById('parts-grid').innerHTML = '';
+    document.getElementById('parse-btns').style.display = 'flex';
+    return;
+  }
+
+  parsedObj = {
+    protocol: u.protocol.replace(':', ''),
+    username: u.username || null,
+    password: u.password ? '••••••' : null,
+    host: u.hostname,
+    port: u.port || null,
+    pathname: u.pathname,
+    search: u.search || null,
+    hash: u.hash ? u.hash.slice(1) : null,
+    origin: u.origin,
+    href: u.href,
+  };
+
+  document.getElementById('parse-status').innerHTML = `<span class="status-badge status-valid">✅ Valid URL</span>`;
+
+  // Parts grid
+  const parts = [
+    { name: 'Protocol', key: 'protocol', color: PART_COLORS.protocol },
+    { name: 'Host', key: 'host', color: PART_COLORS.host },
+    { name: 'Port', key: 'port', color: PART_COLORS.port },
+    { name: 'Path', key: 'pathname', color: PART_COLORS.pathname },
+    { name: 'Query String', key: 'search', color: PART_COLORS.search },
+    { name: 'Fragment', key: 'hash', color: PART_COLORS.hash },
+    { name: 'Username', key: 'username', color: PART_COLORS.username },
+    { name: 'Origin', key: 'origin', color: PART_COLORS.host },
+  ];
+
+  let gridHtml = '';
+  for (const p of parts) {
+    const val = parsedObj[p.key];
+    gridHtml += `<div class="part-card">
+      <div class="part-card-header">
+        <span class="part-dot" style="background:${p.color}"></span>
+        <span class="part-name">${p.name}</span>
+        ${val ? `<button class="copy-btn" onclick="copyText('${(val+'').replace(/'/g,"\\'")}')">copy</button>` : ''}
+      </div>
+      <div class="part-value ${val ? '' : 'empty'}">${val ? escHtml(val+'') : 'none'}</div>
+    </div>`;
+  }
+  document.getElementById('parts-grid').innerHTML = gridHtml;
+
+  // Params table
+  const params = [...u.searchParams.entries()];
+  if (params.length > 0) {
+    let rows = '';
+    for (const [k, v] of params) {
+      const decoded = decodeURIComponent(v);
+      const different = decoded !== v;
+      rows += `<tr>
+        <td class="param-key">${escHtml(k)}</td>
+        <td class="param-val">${escHtml(v)}</td>
+        <td class="param-decoded">${different ? escHtml(decoded) : '<span style="color:var(--muted)">same</span>'}</td>
+      </tr>`;
+    }
+    document.getElementById('params-tbody').innerHTML = rows;
+    document.getElementById('params-section').style.display = 'block';
+  } else {
+    document.getElementById('params-section').style.display = 'none';
+  }
+
+  document.getElementById('parse-empty').style.display = 'none';
+  document.getElementById('parse-results').style.display = 'block';
+  document.getElementById('parse-btns').style.display = 'flex';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function loadParseExample() {
+  const ex = 'https://api.example.com:8443/v2/users/search?name=Jane+Doe&role=admin&active=true&page=2#results';
+  document.getElementById('parse-input').value = ex;
+  parseURL(ex);
+}
+
+function clearParse() {
+  document.getElementById('parse-input').value = '';
+  parseURL('');
+}
+
+function copyParsed() {
+  if (!parsedObj) return;
+  navigator.clipboard.writeText(JSON.stringify(parsedObj, null, 2));
+}
+
+function sendToBuilder() {
+  if (!parsedObj) return;
+  document.getElementById('b-scheme').value = parsedObj.protocol || 'https';
+  document.getElementById('b-host').value = parsedObj.host || '';
+  document.getElementById('b-port').value = parsedObj.port || '';
+  document.getElementById('b-path').value = parsedObj.pathname || '';
+  document.getElementById('b-fragment').value = parsedObj.hash || '';
+  buildURL();
+  switchMainTab('build');
+}
+
+// ── BUILDER ────────────────────────────────────────────────────────────────
+function buildURL() {
+  const scheme = document.getElementById('b-scheme').value;
+  const host = document.getElementById('b-host').value.trim();
+  const port = document.getElementById('b-port').value.trim();
+  const path = document.getElementById('b-path').value.trim();
+  const fragment = document.getElementById('b-fragment').value.trim();
+  const user = document.getElementById('b-user').value.trim();
+
+  if (!host) { document.getElementById('build-output').textContent = 'Enter a host to start building'; return; }
+
+  const paramRows = document.querySelectorAll('#param-rows .param-row');
+  const params = [];
+  paramRows.forEach(row => {
+    const k = row.querySelector('.param-key-input').value.trim();
+    const v = row.querySelector('.param-val-input').value.trim();
+    if (k) params.push([k, v]);
+  });
+
+  let url = `${scheme}://`;
+  if (user) url += `${encodeURIComponent(user)}@`;
+  url += host;
+  if (port) url += `:${port}`;
+  url += path || '/';
+  if (params.length > 0) {
+    url += '?' + params.map(([k,v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+  }
+  if (fragment) url += '#' + fragment;
+
+  document.getElementById('build-output').textContent = url;
+}
+
+function addParamRow() {
+  const row = document.createElement('div');
+  row.className = 'param-row';
+  row.innerHTML = `<input placeholder="key" oninput="buildURL()" class="param-key-input" /><input placeholder="value" oninput="buildURL()" class="param-val-input" /><button class="del-btn" onclick="removeParamRow(this)">×</button>`;
+  document.getElementById('param-rows').appendChild(row);
+}
+
+function removeParamRow(btn) {
+  btn.closest('.param-row').remove();
+  buildURL();
+}
+
+function copyBuilt() {
+  const out = document.getElementById('build-output').textContent;
+  if (out && out !== '—') navigator.clipboard.writeText(out);
+}
+
+function clearBuilder() {
+  ['b-host','b-port','b-path','b-fragment','b-user'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('b-scheme').value = 'https';
+  document.getElementById('param-rows').innerHTML = `<div class="param-row"><input placeholder="key" oninput="buildURL()" class="param-key-input" /><input placeholder="value" oninput="buildURL()" class="param-val-input" /><button class="del-btn" onclick="removeParamRow(this)">×</button></div>`;
+  document.getElementById('build-output').textContent = '—';
+}
+
+// ── UTM ────────────────────────────────────────────────────────────────────
+function buildUTM() {
+  const base = document.getElementById('utm-base').value.trim();
+  const source = document.getElementById('utm-source').value.trim();
+  const medium = document.getElementById('utm-medium').value.trim();
+  const campaign = document.getElementById('utm-campaign').value.trim();
+  const term = document.getElementById('utm-term').value.trim();
+  const content = document.getElementById('utm-content').value.trim();
+
+  if (!base || !source || !medium || !campaign) {
+    document.getElementById('utm-output').textContent = 'Fill in Base URL, Source, Medium and Campaign to generate.';
+    return;
+  }
+
+  let url;
+  try { url = new URL(base); } catch(e) {
+    try { url = new URL('https://' + base); } catch(e2) {
+      document.getElementById('utm-output').textContent = 'Invalid base URL.';
+      return;
+    }
+  }
+
+  url.searchParams.set('utm_source', source);
+  url.searchParams.set('utm_medium', medium);
+  url.searchParams.set('utm_campaign', campaign);
+  if (term) url.searchParams.set('utm_term', term);
+  if (content) url.searchParams.set('utm_content', content);
+
+  document.getElementById('utm-output').textContent = url.toString();
+}
+
+function copyUTM() {
+  const out = document.getElementById('utm-output').textContent;
+  if (out && !out.startsWith('Fill')) navigator.clipboard.writeText(out);
+}
+
+function loadUTMExample() {
+  document.getElementById('utm-base').value = 'https://yoursite.com/landing';
+  document.getElementById('utm-source').value = 'twitter';
+  document.getElementById('utm-medium').value = 'social';
+  document.getElementById('utm-campaign').value = 'product-launch-2026';
+  document.getElementById('utm-term').value = '';
+  document.getElementById('utm-content').value = 'banner-a';
+  buildUTM();
+}
+
+function clearUTM() {
+  ['utm-base','utm-source','utm-medium','utm-campaign','utm-term','utm-content'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('utm-output').textContent = 'Fill in the fields above to generate your UTM link.';
+}
+
+// ── ENCODE / DECODE ────────────────────────────────────────────────────────
+function setMode(mode) {
+  encodeMode = mode;
+  document.getElementById('mode-component').style.background = mode === 'component' ? 'var(--accent)' : '';
+  document.getElementById('mode-component').style.color = mode === 'component' ? '#000' : '';
+  document.getElementById('mode-full').style.background = mode === 'full' ? 'var(--accent)' : '';
+  document.getElementById('mode-full').style.color = mode === 'full' ? '#000' : '';
+  encodeText();
+}
+
+function encodeText() {
+  const val = document.getElementById('encode-input').value;
+  let out;
+  try {
+    out = encodeMode === 'component' ? encodeURIComponent(val) : encodeURI(val);
+    document.getElementById('encode-output').textContent = out || '—';
+  } catch(e) {
+    document.getElementById('encode-output').textContent = 'Error: ' + e.message;
+  }
+}
+
+function decodeText() {
+  const val = document.getElementById('decode-input').value;
+  const errEl = document.getElementById('decode-error');
+  try {
+    const out = decodeURIComponent(val);
+    document.getElementById('decode-output').textContent = out || '—';
+    errEl.style.display = 'none';
+  } catch(e) {
+    errEl.textContent = 'Malformed URI: ' + e.message;
+    errEl.style.display = 'block';
+    document.getElementById('decode-output').textContent = '—';
+  }
+}
+
+function copyEncode() { navigator.clipboard.writeText(document.getElementById('encode-output').textContent); }
+function copyDecode() { navigator.clipboard.writeText(document.getElementById('decode-output').textContent); }
+
+function copyText(text) { navigator.clipboard.writeText(text); }
+</script>
+
+</body>
+</html>
